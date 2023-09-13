@@ -1,52 +1,47 @@
 import {clientApi} from "../../../api/axios.ts";
-import {FormattedOrder, Order, OrderItem, OrderItems, Orders} from "../types/order.ts";
+import {Order, OrderItem, OrderItemsResponse, OrdersResponse} from "../types/order.ts";
 import CurrencyService from "./currency.service.ts";
-import {isNonNullishArray} from "../../../shared/types/guards.ts";
 import {FORMATTERS} from "../../../shared/constants/intl.ts";
-import {CurrencyRates} from "../types/currency.ts";
 import {AxiosResponse} from "axios";
 
 class OrdersService {
-   ordersInfo: [Orders, OrderItems, CurrencyRates] | undefined[] = [];
+   ordersInfo: { orders: Order[], orderItems: Record<string, OrderItem> } = {orders: [], orderItems: {}};
 
    async getAllOrders() {
-      return clientApi.get<Orders>(`/test-task-orders`)
+      return clientApi.get<OrdersResponse>(`/test-task-orders`)
    }
 
    async getAllItems() {
-      return clientApi.get<OrderItems>(`/test-task-items`)
+      return clientApi.get<OrderItemsResponse>(`/test-task-items`)
    }
 
    async fetchOrders() {
-      const queries = [this.getAllOrders, this.getAllItems, CurrencyService.getCurrencies] satisfies Array<() => Promise<AxiosResponse>>;
-      const queryResult = (await Promise.all(queries.map((queryFn) => queryFn()))).map(result => result?.data) as [Orders, OrderItems, CurrencyRates];
-      this.ordersInfo = queryResult;
+      const queries = [this.getAllOrders(), this.getAllItems()] satisfies Array<Promise<AxiosResponse>>;
+      const queryResult = (await Promise.all(queries)).map(result => result?.data) as [OrdersResponse, OrderItemsResponse];
+      this.ordersInfo = {
+         orders: queryResult[0].orders,
+         orderItems: queryResult[1].items.reduce((acc, item) => {
+            acc[item.itemId] = item;
+            return acc;
+         }, {} as typeof this.ordersInfo.orderItems)
+      };
 
-      return queryResult;
+      return this.ordersInfo;
    }
 
-   formatOrdersToCsvArray(ordersQuery: NonNullable<typeof this.ordersInfo>): FormattedOrder[] {
-      if (isNonNullishArray(ordersQuery)) {
-         const [{orders}, {items}, {rates}] = ordersQuery;
-         const HEADER: FormattedOrder = {orderId: 'Order Id', date: 'Date', itemName: 'Item Name', amount: 'Amount'};
+   formatOrdersToCsv({orders, orderItems}: typeof this.ordersInfo) {
+      let csv = `Order Id,Date,Item Name,Amount,\n`;
 
-         return [
-            HEADER,
-            ...orders.map(({itemId, orderId, date}: Order) => {
-               const {currency, amount, itemName = 'N/A'} = items.find((item: OrderItem) => item.itemId === itemId) ?? {};
-               const denominationInDollars = currency && amount ? amount * rates[currency] : 'N/A';
-               const newDate = date ? FORMATTERS.DATE.format(new Date(date)) : 'N/A';
+      for (const {itemId, orderId, date} of orders) {
+         const {currency, amount, itemName = 'N/A'} = orderItems[itemId] ?? {};
+         const isConversionPossible = currency && amount && CurrencyService.currencies[currency];
+         const denominationInDollars = isConversionPossible ? amount * CurrencyService.currencies[currency] : 'N/A';
+         const newDate = date ? FORMATTERS.DATE.format(new Date(date)) : 'N/A';
 
-               return {
-                  orderId,
-                  date: newDate,
-                  itemName,
-                  amount: denominationInDollars,
-               }
-            })];
+         csv += `${orderId},${newDate},${itemName},${denominationInDollars},\n`;
       }
 
-      return [];
+      return `data:text/csv;charset=utf-8,${csv}`;
    }
 }
 

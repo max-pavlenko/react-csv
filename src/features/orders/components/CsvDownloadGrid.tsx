@@ -4,7 +4,6 @@ import Button from "../../../shared/ui/atoms/Button.tsx";
 import Loader from "../../../shared/ui/atoms/Loader.tsx";
 import OrdersService from "../services/orders.service.ts";
 import {downloadWithAnchor} from "../../../shared/utils/downloadWithAnchor.ts";
-import {toCsvString} from "../../../shared/utils/toCsvString.ts";
 
 const CARDS_AMOUNT = 4;
 const CsvDownloadGrid = () => {
@@ -13,8 +12,8 @@ const CsvDownloadGrid = () => {
    async function handleCsvDownloadClick() {
       setIsLoadingOrders(true);
       const orders = await OrdersService.fetchOrders();
-      const csvContent = toCsvString(OrdersService.formatOrdersToCsvArray(orders));
-      downloadWithAnchor(csvContent, "orders.csv");
+      const csv = OrdersService.formatOrdersToCsv(orders);
+      downloadWithAnchor(csv, "orders.csv");
       setIsLoadingOrders(false);
    }
 

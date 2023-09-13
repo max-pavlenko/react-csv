@@ -1,2 +1,2 @@
-export type Currency = Record<string, number>;
-export type CurrencyRates = { rates: Currency }
+export type Currencies = Record<string, number>;
+export type CurrencyRates = { rates: Currencies }
